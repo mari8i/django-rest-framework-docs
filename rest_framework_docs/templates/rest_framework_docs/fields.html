@@ -1,0 +1,10 @@
+<ul class="list fields">
+  {% for field in fields %}
+  <li class="field">{{ field.name }}: {{ field.type }} {% if field.required %}<span class="label label-primary label-required" title="Required">R</span>{% endif %}</li>
+    {% if field.child %}
+      {% with fields=field.child template_name="fields.html" %}
+        {% include template_name %}
+      {% endwith %}
+    {% endif %}
+  {% endfor %}
+</ul>

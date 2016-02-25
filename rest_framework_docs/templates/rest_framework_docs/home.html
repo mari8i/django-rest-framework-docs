@@ -56,7 +56,7 @@
         <div id="{{ endpoint.path|slugify }}" class="panel-collapse collapse" role="tabpanel">
           <div class="panel-body">
             {% if endpoint.docstring %}
-            <p class="lead">{{ endpoint.docstring }}</p>
+            <p class="lead">{{ endpoint.docstring|linebreaksbr }}</p>
             {% endif %}
 
             {% if endpoint.errors %}
@@ -65,11 +65,9 @@
 
             {% if endpoint.fields %}
             <p class="fields-desc">Fields:</p>
-              <ul class="list fields">
-              {% for field in endpoint.fields %}
-                <li class="field">{{ field.name }}: {{ field.type }} {% if field.required %}<span class="label label-primary label-required" title="Required">R</span>{% endif %}</li>
-              {% endfor %}
-              </ul>
+            {% with fields=endpoint.fields template_name="fields.html" %}
+              {% include template_name %}
+            {% endwith %}
             {% elif not endpoint.errors %}
             <p>No fields.</p>
             {% endif %}
