@@ -2,6 +2,15 @@
 
 Document Web APIs made with Django Rest Framework. [View Demo](http://demo.drfdocs.com/)
 
+### Why a fork and what should I expect
+
+I needed support for nested serializers and for function views (the
+ones that use the @api_view decorator), so I've added it.
+
+NB: This fork atts support for nested serializers and for fields
+documentation for @api_view function views. This support is still
+experimental and developed for work related requirements.
+
 ![DRFdocs](https://cloud.githubusercontent.com/assets/6333409/13193861/69e82aec-d778-11e5-95c4-77f4ef29e6e5.png)
 
 ### Supports
