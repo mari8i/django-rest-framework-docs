@@ -48,36 +48,43 @@ class ApiEndpoint(object):
 
         return fields
 
+    def _get_field(self, key, field):
+        return {
+            "name": key,
+            "type": str(field.__class__.__name__),
+            "required": field.required
+            }
+
     def _get_fields(self, serializer):
+        fields = []
+
         if hasattr(serializer, 'get_fields'):
             try:
-                fields = []
-
                 for key, field in serializer().get_fields().items():
 
-                    _field = {
-                        "name": key,
-                        "type": str(field.__class__.__name__),
-                        "required": field.required
-                    }
-
-                    fields.append(_field)
+                    _field = self._get_field(key, field)
 
                     # Handle nested serializers. This can probably be handled better.
-                    if (field.__class__.__module__ == "rest_framework.serializers" and \
-                        (field.__class__.__name__ == "ListSerializer" or \
-                        field.__class__.__name__ == "DictSerializer")):
+                    if (field.__class__.__module__ == "rest_framework.serializers" and
+                        (field.__class__.__name__ == "ListSerializer" or
+                         field.__class__.__name__ == "DictSerializer")):
                         _field['child'] = self._get_fields(field.child.__class__)
                         pass
+                    elif (field.__class__.__module__ == "rest_framework.fields" and
+                          field.__class__.__name__ == "ListField"):
+                        _child = self._get_field("child", field.child)
+                        _field['type'] += " (" + _child['type']+ ")"
 
                     elif (field.__class__.__module__ != "rest_framework.serializers" and \
                           field.__class__.__module__ != "rest_framework.fields"):
                         _field['child'] = self._get_fields(field.__class__)
                         pass
 
+                    fields.append(_field)
+
             except KeyError as e:
                 self.errors = e
-                fields = []
+                pass
 
         return fields
 
