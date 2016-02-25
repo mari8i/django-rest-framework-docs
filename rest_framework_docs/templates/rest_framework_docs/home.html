@@ -65,7 +65,7 @@
 
             {% if endpoint.fields %}
             <p class="fields-desc">Fields:</p>
-            {% with fields=endpoint.fields template_name="fields.html" %}
+            {% with fields=endpoint.fields template_name="rest_framework_docs/fields.html" %}
               {% include template_name %}
             {% endwith %}
             {% elif not endpoint.errors %}
