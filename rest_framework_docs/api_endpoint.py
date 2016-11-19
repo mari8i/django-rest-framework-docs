@@ -2,11 +2,13 @@ import json
 import inspect
 from django.contrib.admindocs.views import simplify_regex
 from django.utils.encoding import force_str
+from rest_framework.serializers import BaseSerializer
 
 
 class ApiEndpoint(object):
 
-    def __init__(self, pattern, parent_pattern=None):
+    def __init__(self, pattern, parent_pattern=None, drf_router=None):
+        self.drf_router = drf_router
         self.pattern = pattern
         self.callback = pattern.callback
         # self.name = pattern.name
@@ -16,8 +18,12 @@ class ApiEndpoint(object):
         self.allowed_methods = self.__get_allowed_methods__()
         # self.view_name = pattern.callback.__name__
         self.errors = None
-        self.fields = self.__get_serializer_fields__()
-        self.fields_json = self.__get_serializer_fields_json__()
+        self.serializer_class = self.__get_serializer_class__()
+        if self.serializer_class:
+            self.serializer = self.__get_serializer__()
+            self.fields = self.__get_serializer_fields__(self.serializer)
+            self.fields_json = self.__get_serializer_fields_json__()
+
         self.permissions = self.__get_permissions_class__()
 
     def __get_path__(self, parent_pattern):
@@ -26,7 +32,39 @@ class ApiEndpoint(object):
         return simplify_regex(self.pattern.regex.pattern)
 
     def __get_allowed_methods__(self):
-        return [force_str(m).upper() for m in self.callback.cls.http_method_names if hasattr(self.callback.cls, m)]
+
+        viewset_methods = []
+        if self.drf_router:
+            for prefix, viewset, basename in self.drf_router.registry:
+                if self.callback.cls != viewset:
+                    continue
+
+                lookup = self.drf_router.get_lookup_regex(viewset)
+                routes = self.drf_router.get_routes(viewset)
+
+                for route in routes:
+
+                    # Only actions which actually exist on the viewset will be bound
+                    mapping = self.drf_router.get_method_map(viewset, route.mapping)
+                    if not mapping:
+                        continue
+
+                    # Build the url pattern
+                    regex = route.url.format(
+                        prefix=prefix,
+                        lookup=lookup,
+                        trailing_slash=self.drf_router.trailing_slash
+                    )
+                    if self.pattern.regex.pattern == regex:
+                        funcs, viewset_methods = zip(
+                            *[(mapping[m], m.upper()) for m in self.callback.cls.http_method_names if m in mapping]
+                        )
+                        viewset_methods = list(viewset_methods)
+                        if len(set(funcs)) == 1:
+                            self.docstring = inspect.getdoc(getattr(self.callback.cls, funcs[0]))
+
+        view_methods = [force_str(m).upper() for m in self.callback.cls.http_method_names if hasattr(self.callback.cls, m)]
+        return viewset_methods + view_methods
 
     def __get_docstring__(self):
         return inspect.getdoc(self.callback)
@@ -35,56 +73,41 @@ class ApiEndpoint(object):
         for perm_class in self.pattern.callback.cls.permission_classes:
             return perm_class.__name__
 
-    def __get_serializer_fields__(self):
-        fields = []
+    def __get_serializer__(self):
+        try:
+            return self.serializer_class()
+        except KeyError as e:
+            self.errors = e
 
-        if hasattr(self.callback.cls, 'serializer_class') and hasattr(self.callback.cls.serializer_class, 'get_fields'):
-            serializer = self.callback.cls.serializer_class
-            fields = self._get_fields(serializer)
-            pass
+    def __get_serializer_class__(self):
+        if hasattr(self.callback.cls, 'serializer_class'):
+            return self.callback.cls.serializer_class
 
-        # FIXME:
-        # Show more attibutes of `field`?
+        if hasattr(self.callback.cls, 'get_serializer_class'):
+            return self.callback.cls.get_serializer_class(self.pattern.callback.cls())
 
-        return fields
-
-    def _get_field(self, key, field):
-        return {
-            "name": key,
-            "type": str(field.__class__.__name__),
-            "required": field.required
-            }
-
-    def _get_fields(self, serializer):
+    def __get_serializer_fields__(self, serializer):
         fields = []
 
         if hasattr(serializer, 'get_fields'):
-            try:
-                for key, field in serializer().get_fields().items():
+            for key, field in serializer.get_fields().items():
+                to_many_relation = True if hasattr(field, 'many') else False
+                sub_fields = []
 
-                    _field = self._get_field(key, field)
+                if to_many_relation:
+                    sub_fields = self.__get_serializer_fields__(field.child) if isinstance(field, BaseSerializer) else None
+                else:
+                    sub_fields = self.__get_serializer_fields__(field) if isinstance(field, BaseSerializer) else None
 
-                    # Handle nested serializers. This can probably be handled better.
-                    if (field.__class__.__module__ == "rest_framework.serializers" and
-                        (field.__class__.__name__ == "ListSerializer" or
-                         field.__class__.__name__ == "DictSerializer")):
-                        _field['child'] = self._get_fields(field.child.__class__)
-                        pass
-                    elif (field.__class__.__module__ == "rest_framework.fields" and
-                          field.__class__.__name__ == "ListField"):
-                        _child = self._get_field("child", field.child)
-                        _field['type'] += " (" + _child['type']+ ")"
-
-                    elif (field.__class__.__module__ != "rest_framework.serializers" and \
-                          field.__class__.__module__ != "rest_framework.fields"):
-                        _field['child'] = self._get_fields(field.__class__)
-                        pass
-
-                    fields.append(_field)
-
-            except KeyError as e:
-                self.errors = e
-                pass
+                fields.append({
+                    "name": key,
+                    "type": str(field.__class__.__name__),
+                    "sub_fields": sub_fields,
+                    "required": field.required,
+                    "to_many_relation": to_many_relation
+                })
+            # FIXME:
+            # Show more attibutes of `field`?
 
         return fields
 

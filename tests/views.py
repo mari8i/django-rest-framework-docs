@@ -5,9 +5,11 @@ from django.views.generic.base import TemplateView
 from rest_framework import parsers, renderers, generics, status
 from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.serializers import AuthTokenSerializer
+from rest_framework.decorators import detail_route
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.viewsets import ModelViewSet
 from tests.models import User, Organisation, Membership
 from tests import serializers
 
@@ -111,3 +113,39 @@ class LeaveOrganisationView(generics.DestroyAPIView):
 class OrganisationErroredView(generics.ListAPIView):
 
     serializer_class = serializers.OrganisationErroredSerializer
+
+
+class LoginWithSerilaizerClassView(APIView):
+    """
+    A view that allows users to login providing their username and password. Without serializer_class
+    """
+
+    throttle_classes = ()
+    permission_classes = ()
+    parser_classes = (parsers.FormParser, parsers.MultiPartParser, parsers.JSONParser,)
+    renderer_classes = (renderers.JSONRenderer,)
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({'token': token.key})
+
+    def get_serializer_class(self):
+        return AuthTokenSerializer
+
+
+class TestModelViewSet(ModelViewSet):
+    queryset = Organisation.objects.all()
+    serializer_class = serializers.OrganisationMembersSerializer
+
+    @detail_route(methods=['post'])
+    def test_route(self, request):
+        """This is a test."""
+        return Response()
+
+
+class RetrieveOrganisationView(generics.RetrieveAPIView):
+
+    serializer_class = serializers.RetrieveOrganisationSerializer
